@@ -38,7 +38,7 @@ test('private complaint lifecycle, role permissions, release, rework and exactly
  assert.ok((await api('resident','data')).data.complaints[0].history.every(h=>h.actor&&h.created));
 });
 test('no-issue evidence needs an official rejection and reverses the initial credit only once',async()=>{
- await api('resident','complaints',{...payload,title:'Another reported issue'});
+ await api('resident','complaints',{...payload,title:'Another reported issue',latitude:16.25});
  const id=(await api('resident','data')).data.complaints[0].id;
  await action('manager',id,'submitted','verify');await action('manager',id,'verified','assign',{team_id:1});await action('staff',id,'assigned','start');
  assert.equal((await action('staff',id,'in_progress','no_issue',{proof:photo,note:'The location is clear.'})).status,200);
@@ -46,4 +46,24 @@ test('no-issue evidence needs an official rejection and reverses the initial cre
  assert.equal((await action('manager',id,'no_issue_reported','reject',{note:'Evidence reviewed. No issue exists.'})).status,200);
  assert.equal((await api('resident','session')).data.user.coins,20);
  assert.equal((await action('admin',id,'no_issue_reported','reject',{note:'Duplicate decision'})).status,409);
+});
+test('role invitations, team management, schedules, community content and exports enforce access',async()=>{
+ const registration=await api('candidate','register',{name:'New Worker',email:'worker@example.test',password:'StrongPassword!9',village_id:1});
+ assert.equal(registration.status,201);assert.ok(registration.data.demoCode);
+ assert.equal((await api('candidate','verify-email',{email:'worker@example.test',code:registration.data.demoCode})).status,200);
+ const login=await api('candidate','login',{email:'worker@example.test',password:'StrongPassword!9'});sessions.candidate=login.cookie.split(';')[0];
+ const candidate=(await api('manager','data')).data.people.find(p=>p.email==='worker@example.test');
+ assert.equal((await api('staff','modules/action',{action:'invite',role:'staff',target_id:candidate.id})).status,403);
+ assert.equal((await api('manager','modules/action',{action:'invite',role:'staff',target_id:candidate.id})).status,200);
+ const invite=(await api('candidate','data')).data.invites[0];
+ assert.equal((await api('candidate','modules/action',{action:'invite_response',id:invite.id,decision:'accept',mobile:'+91 90000 00000'})).status,200);
+ assert.equal((await api('candidate','session')).data.user.role,'staff');
+ assert.equal((await api('manager','modules/action',{action:'team_create',name:'New Area Team',area_id:1})).status,200);
+ const managerData=(await api('manager','data')).data,team=managerData.teams.find(t=>t.name==='New Area Team'),worker=managerData.people.find(p=>p.email==='worker@example.test');
+ assert.equal((await api('manager','modules/action',{action:'team_member',staff_id:worker.id,team_id:team.id})).status,200);
+ assert.equal((await api('manager','modules/action',{action:'schedule_save',area_id:1,weekday:'Friday',collection_time:'08:30'})).status,200);
+ assert.equal((await api('manager','modules/action',{action:'post_create',title:'Test guidance',body:'Keep the area clean.'})).status,200);
+ assert.equal((await api('manager','modules/action',{action:'event_create',area_id:1,title:'Test drive',description:'Community cleaning.',event_time:'2026-12-01T07:00',meeting_point:'School'})).status,200);
+ assert.ok((await api('candidate','data')).data.schedules.some(s=>s.weekday==='Friday'));
+ const pdf=await fetch('http://127.0.0.1:4198/api/export?format=pdf',{headers:{Cookie:sessions.manager}});assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type'),'application/pdf');assert.ok((await pdf.arrayBuffer()).byteLength>300);
 });
