@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-mkdirSync(path.join(root, 'data'), { recursive: true });
-const db = new DatabaseSync(process.env.CV_DB || path.join(root, 'data', 'village.sqlite'));
+const vercelPreview = Boolean(process.env.VERCEL);
+const dataRoot = vercelPreview ? path.join(process.env.TMPDIR || '/tmp', 'clean-village') : path.join(root, 'data');
+mkdirSync(dataRoot, { recursive: true });
+const db = new DatabaseSync(process.env.CV_DB || path.join(dataRoot, 'village.sqlite'));
 db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS villages(id INTEGER PRIMARY KEY,name TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS areas(id INTEGER PRIMARY KEY,village_id INTEGER REFERENCES villages(id),name TEXT NOT NULL);
@@ -43,7 +45,7 @@ try{db.exec('ALTER TABLE redemptions ADD COLUMN contact TEXT');}catch{}
 const all=(sql,...a)=>db.prepare(sql).all(...a), one=(sql,...a)=>db.prepare(sql).get(...a), run=(sql,...a)=>db.prepare(sql).run(...a);
 function hash(p,s=randomBytes(16).toString('hex')) {return s+':'+scryptSync(p,s,64).toString('hex');}
 function check(p,h) {const [s,k]=h.split(':');return timingSafeEqual(Buffer.from(k,'hex'),Buffer.from(hash(p,s).split(':')[1],'hex'));}
-const demo=process.argv.includes('--demo');
+const demo=process.argv.includes('--demo')||process.env.CV_DEMO==='1'||vercelPreview;
 if(demo && !one('SELECT id FROM users LIMIT 1')) {
  db.exec(`INSERT INTO villages VALUES(1,'Pinapadu'),(2,'Burripalem'); INSERT INTO areas VALUES(1,1,'School Road'),(2,1,'Market Area'),(3,2,'Main Road'); INSERT INTO teams VALUES(1,1,1,'School Road Sanitation Team'),(2,1,2,'Market Area Sanitation Team'),(3,2,3,'Burripalem Sanitation Team');`);
  for(const [name,email,role,village,team] of [['Resident','resident@demo.local','citizen',1,null],['Village Manager','manager@demo.local','manager',1,null],['Administrator','admin@demo.local','admin',1,null],['Team Member','staff@demo.local','staff',1,1],['Second Resident','other@demo.local','citizen',2,null],['Burripalem Manager','manager2@demo.local','manager',2,null]])
@@ -195,5 +197,5 @@ const server=http.createServer(async(req,res)=>{
 });
 function sendUnassignedReminders(){const start=one("SELECT value FROM app_settings WHERE key='working_start'")?.value,end=one("SELECT value FROM app_settings WHERE key='working_end'")?.value;if(!start||!end)return;const now=new Date(),time=now.toTimeString().slice(0,5);if(time<start||time>end)return;for(const c of all("SELECT * FROM complaints WHERE team_id IS NULL AND status IN ('submitted','verified','resubmitted') AND datetime(created)<=datetime('now','-3 hours')")){const log=one('SELECT last_sent FROM reminder_log WHERE complaint_id=?',c.id);if(log&&Date.now()-log.last_sent<10800000)continue;officials(c.village_id,`Unassigned complaint reminder: CV-${String(c.id).padStart(4,'0')} has not been allotted to a team.`);run('INSERT INTO reminder_log(complaint_id,last_sent) VALUES(?,?) ON CONFLICT(complaint_id) DO UPDATE SET last_sent=excluded.last_sent',c.id,Date.now());}}
 const reminderTimer=setInterval(sendUnassignedReminders,900000);reminderTimer.unref();
-server.listen(Number(process.env.PORT||4173),'127.0.0.1',()=>{sendUnassignedReminders();console.log(`CleanVillage: http://127.0.0.1:${process.env.PORT||4173}${demo?' — local development demo':''}`);});
+server.listen(Number(process.env.PORT||4173),vercelPreview?'0.0.0.0':'127.0.0.1',()=>{sendUnassignedReminders();console.log(`CleanVillage: http://${vercelPreview?'0.0.0.0':'127.0.0.1'}:${process.env.PORT||4173}${demo?' — temporary demo data':''}`);});
 
