@@ -24,5 +24,7 @@ Manager primarily manages village collection schedules; admin can also edit. Are
 Awareness: admin and village managers publish/edit. Events: both organise, managers village-limited; registration and attendance, no coins. Only complaints earn coins.
 Monthly reports: received/resolved/rejected/pending, assignment backlog, average resolution time, collections completed/missed/rescheduled, coin credits/reversals/redemptions, events and attendance. Village-scoped manager reports; individual/all village admin reports. PDF and Excel exports.
 
-## Incremental implementation
-First increment: local server/database, isolated development accounts, session authentication, role scoping, complaint submission/verification/team assignment/proof/rework/resolution, ledger, in-app notifications and responsive interface. This is not the final application. Real email verification, mobile onboarding, maps, invitations, rewards, collections, events, awareness authoring, reminders and exports must follow. No publication until real services and complete workflows are validated.
+## Implementation status
+The local application now covers the four role portals and the agreed complaint, coin, invitation, team, removal-approval, reward-delivery, collection-schedule, awareness, event-registration and reporting workflows. Email verification and all notification emails are recorded in a provider-ready outbox; the demo reveals verification codes locally for testing. PDF and Excel downloads are generated from role-scoped data.
+
+Deployment-dependent work remains separate: connect a transactional email provider, decide and configure working hours for three-hour reminders, decide whether SMS verification is required, translate the approved English interface to Telugu, move photographs to production object storage, and add hosting protections/backups/TLS. These require credentials or decisions that have not been provided and are not simulated as live services.
